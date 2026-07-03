@@ -1,0 +1,15 @@
+api key = AIzaSyCUsnfSswjWmcz7MA7O7hIN6JB3LVutmJ8
+
+code = 
+from google import genai
+
+client = genai.Client(api_key="AIzaSyCUsnfSswjWmcz7MA7O7hIN6JB3LVutmJ8")
+
+question = input("Ask LLM a question : ")
+
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=question
+)
+
+print(response)
