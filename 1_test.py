@@ -1,69 +1,111 @@
-from google import genai
+import os
 import sqlite3
+from typing import Optional
 
-conn = sqlite3.connect("chat.db")
-cursor = conn.cursor()
+from google import genai
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS chats (
-               id INTEGER PRIMARY KEY AUTOINCREMENT,
-               question TEXT,
-               answer TEXT)
-               """)
+DATABASE_PATH = "chat.db"
 
-conn.commit()
 
-client = genai.Client(api_key="AIzaSyCUsnfSswjWmcz7MA7O7hIN6JB3LVutmJ8")
-
-while True:
-  print("----------commands----------")
-  print("1 = Ask the AI question.")
-  print("2 = View History.")
-  print("4 = Exit.")
-  print("----------------------------")
-  cmd = int(input("Enter command : "))
-
-  if cmd == 1:
-    question = input("Ask question to the AI : ")
-    response = client.models.generate_content(
-      model = 'gemini-2.5-flash',
-      contents = question
+def initialize_database(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL
+        )
+        """
     )
-    print(response.text) 
-    cursor.execute(
-      """
-     INSERT INTO chats (question, answer)
-     VALUES(? , ?)
-      """,
-      (question, response.text)
+    connection.commit()
+
+
+def create_client() -> genai.Client:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Copy .env.example to .env and export the value "
+            "before starting the app."
+        )
+    return genai.Client(api_key=api_key)
+
+
+def read_command() -> Optional[int]:
+    print("\n---------- Commands ----------")
+    print("1 = Ask the AI a question")
+    print("2 = View history")
+    print("4 = Exit")
+    print("------------------------------")
+
+    try:
+        return int(input("Enter command: ").strip())
+    except ValueError:
+        print("Please enter a number.")
+        return None
+
+
+def ask_question(client: genai.Client, connection: sqlite3.Connection) -> None:
+    question = input("Ask the AI: ").strip()
+    if not question:
+        print("Question cannot be empty.")
+        return
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=question,
+        )
+        answer = response.text or "The model returned no text."
+    except Exception as error:
+        print(f"Request failed: {error}")
+        return
+
+    print(f"\n{answer}")
+    connection.execute(
+        "INSERT INTO chats (question, answer) VALUES (?, ?)",
+        (question, answer),
     )
-    conn.commit()
+    connection.commit()
 
-  elif cmd == 4:
-    break
 
-  elif cmd == 2:
-    print("Fetching chat history...")
-    cursor.execute("""
-    SELECT id, question, answer
-    FROM chats
-    ORDER BY id
-    """)
+def show_history(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        "SELECT id, question, answer FROM chats ORDER BY id"
+    ).fetchall()
 
-    rows = cursor.fetchall()
-
-    if len(rows) == 0:
+    if not rows:
         print("No history found.")
+        return
 
-    else:
-        for row in rows:
-            print("\n--------------------")
-            print(f"Chat #{row[0]}")
-            print("Question:", row[1])
-            print("Answer:", row[2])
-            print("--------------------")
+    for chat_id, question, answer in rows:
+        print(f"\n--- Chat #{chat_id} ---")
+        print(f"Question: {question}")
+        print(f"Answer: {answer}")
 
 
-  
-  else :
-    print("Enter valid commands only.")
+def main() -> None:
+    try:
+        client = create_client()
+    except RuntimeError as error:
+        print(error)
+        return
+
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        initialize_database(connection)
+
+        while True:
+            command = read_command()
+
+            if command == 1:
+                ask_question(client, connection)
+            elif command == 2:
+                show_history(connection)
+            elif command == 4:
+                print("Goodbye!")
+                break
+            elif command is not None:
+                print("Unknown command. Choose 1, 2, or 4.")
+
+
+if __name__ == "__main__":
+    main()
