@@ -35,7 +35,7 @@ A small Python command-line chat client that sends prompts to Google's Gemini AP
 4. Start the app:
 
    ```bash
-   python 1_test.py
+   python chat_cli.py
    ```
 
 ## Security
